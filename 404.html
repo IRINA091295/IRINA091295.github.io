@@ -1,6 +1,43 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<script>
+/* PASSERELLE D API - PREPRODUCTION UNIQUEMENT. N EXISTE PAS DANS LE FICHIER LIVE.
+ *
+ * Le front appelle l API en chemins RELATIFS : `fetch('/accounts')`. Servi depuis un
+ * hebergeur independant, ces appels partent vers CET hebergeur, qui renvoie son repli SPA -
+ * 5,9 Mo de HTML avec un statut 404. Le front recoit donc une REPONSE, en conclut que le
+ * serveur repond, et le mode degrade ne se declenche JAMAIS. Mesure du 24/09/2026.
+ *
+ * On reecrit donc l origine au niveau de `fetch`, UNE seule fois, plutot que de toucher aux
+ * dizaines d appels existants - exactement ce que ferait une regle de proxy chez un
+ * hebergeur qui en propose (Cloudflare, Netlify). GitHub Pages n en propose pas : ce shim
+ * en tient lieu pour la preproduction.
+ *
+ * En production, cette reecriture ne servira a rien : le front et l API partageront la meme
+ * origine derriere le repartiteur. Ce fichier ne doit donc JAMAIS etre porte dans le LIVE.
+ */
+(function () {
+  var API = 'https://copy-pilot.io';
+  /* Ce qui est servi par l hebergeur statique et ne doit PAS partir vers l API. */
+  var STATIQUE = /^\/(favicon\.ico|brand\/|404\.html|index\.html)?$/i;
+  var fetchOrigine = window.fetch.bind(window);
+  window.fetch = function (entree, options) {
+    try {
+      var url = (typeof entree === 'string') ? entree : (entree && entree.url);
+      if (typeof url === 'string' && url.charAt(0) === '/' && !STATIQUE.test(url)) {
+        var cible = API + url;
+        if (typeof entree === 'string') entree = cible;
+        else entree = new Request(cible, entree);
+        options = Object.assign({}, options || {}, { mode: 'cors', credentials: 'omit' });
+      }
+    } catch (e) { /* jamais casser l appel d origine a cause de la passerelle */ }
+    return fetchOrigine(entree, options);
+  };
+  window.__passerelleApi = API;
+})();
+</script>
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Titre d onglet corrige (2026-08-29). Mesure sur la production : un visiteur du site
